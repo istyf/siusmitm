@@ -2,19 +2,24 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/diwise/frontend-toolkit/pkg/middleware/csp"
 	"github.com/diwise/service-chassis/pkg/infrastructure/env"
 	"github.com/diwise/service-chassis/pkg/infrastructure/o11y/logging"
 	"github.com/diwise/service-chassis/pkg/infrastructure/servicerunner"
+
 	"github.com/istyf/siusmitm/pkg/api"
 	"github.com/istyf/siusmitm/pkg/mitm"
 )
@@ -31,6 +36,7 @@ func DefaultFlags() FlagMap {
 		webPort:        "8088", //
 		siusClientPort: "4300", // default sius comm service port
 		siusServerPort: "4200", // default sius comm server port
+		loadResults:    "",
 	}
 }
 
@@ -49,7 +55,40 @@ func main() {
 	exitIf(err, logger, "failed to initialize service")
 
 	err = runner.Run(ctx, servicerunner.WithWorker(func(ctx_ context.Context, cfg *AppConfig) error {
-		fmt.Println("listening for connections on", cfg.SiusClientPort)
+
+		if cfg.ResultFilePath != "" {
+			f, err := os.Open(cfg.ResultFilePath)
+			if err != nil {
+				logger.Error("failed to open results file", "err", err.Error())
+			} else {
+				shotsJSON, err := io.ReadAll(f)
+				f.Close()
+
+				if err == nil {
+					var shotsToAdd []mitm.Shot
+					json.Unmarshal([]byte(shotsJSON), &shotsToAdd)
+
+					for len(shotsToAdd) > 0 {
+						time.Sleep(time.Duration(500) * time.Millisecond)
+						s := shotsToAdd[0]
+						shotsToAdd = shotsToAdd[1:]
+
+						if jsonBytes, err := json.Marshal(s); err == nil {
+							_, err := http.Post(
+								"http://localhost:"+cfg.WebPort+"/api/shots",
+								"application/json",
+								bytes.NewBuffer(jsonBytes),
+							)
+							if err != nil {
+								logger.Error("failed to post shot data", "err", err.Error())
+							}
+						}
+					}
+				}
+			}
+		}
+
+		logger.Info("listening for connections on", "port", cfg.SiusClientPort)
 
 		listener, err := net.Listen("tcp", ":"+cfg.SiusClientPort)
 		if err != nil {
@@ -62,7 +101,7 @@ func main() {
 				return err
 			}
 
-			fmt.Println("accepted connection on port", cfg.SiusClientPort)
+			logger.Info("accepted connection on port", "port", cfg.SiusClientPort)
 
 			tcpAddr, err := net.ResolveTCPAddr("tcp", ":"+cfg.SiusServerPort)
 			if err != nil {
@@ -74,7 +113,7 @@ func main() {
 				return fmt.Errorf("dial failed: %s", err.Error())
 			}
 
-			fmt.Println("connected successfully to port", cfg.SiusServerPort)
+			logger.Info("connected successfully to port", "port", cfg.SiusServerPort)
 
 			SetupPipes(ctx_, inconn, outconn)
 		}
@@ -111,6 +150,7 @@ func parseExternalConfig(ctx context.Context, flags FlagMap) (context.Context, F
 	flag.Func("port", "sius server port", apply(siusClientPort))
 	flag.Func("web-port", "web service port number", apply(webPort))
 	flag.Func("web-assets", "web assets path", apply(webAssets))
+	flag.Func("load", "load results from file", apply(loadResults))
 	flag.Parse()
 
 	return ctx, flags
@@ -120,6 +160,7 @@ func newConfig(_ context.Context, flags FlagMap) (*AppConfig, error) {
 	cfg := &AppConfig{
 		SiusClientPort: flags[siusClientPort],
 		SiusServerPort: flags[siusServerPort],
+		ResultFilePath: flags[loadResults],
 	}
 	return cfg, nil
 }
@@ -129,6 +170,8 @@ func initialize(ctx context.Context, flags FlagMap, cfg *AppConfig) (servicerunn
 	_, runner := servicerunner.New(ctx, *cfg,
 		webserver("public", listen(flags[listenAddress]), port(flags[webPort]),
 			muxinit(func(ctx context.Context, identifier string, port string, svcCfg *AppConfig, handler *http.ServeMux) (err error) {
+				svcCfg.WebPort = port
+
 				middlewares := append(
 					make([]func(http.Handler) http.Handler, 0, 10),
 					csp.NewContentSecurityPolicy(csp.StrictDynamic()),

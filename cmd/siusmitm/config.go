@@ -16,6 +16,7 @@ const (
 	webPort
 	siusClientPort
 	siusServerPort
+	loadResults
 )
 
 type AppConfig struct {
@@ -25,6 +26,8 @@ type AppConfig struct {
 	SiusServerPort string
 	WebAssetsPath  string
 	WebPort        string
+
+	ResultFilePath string
 
 	cancelContext context.CancelFunc
 }
