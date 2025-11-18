@@ -1,0 +1,77 @@
+package components
+
+import (
+	"github.com/istyf/siusmitm/pkg/mitm"
+
+	. "github.com/diwise/frontend-toolkit"
+	"github.com/diwise/frontend-toolkit/pkg/middleware/csp"
+)
+
+templ StartPage(version string, asset AssetLoaderFunc, shots []mitm.Shot, view string) {
+	<!DOCTYPE html>
+	<html>
+		<head>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<link href={ asset("/css/mitm.css").Path() } rel="stylesheet"/>
+			<script src={ asset("/js/htmx.min.js").Path() } nonce={ csp.Nonce(ctx) }></script>
+			<script src={ asset("/js/htmx-ext-sse.js").Path() } nonce={ csp.Nonce(ctx) }></script>
+			<link rel="icon" type="image/x-icon" href={ asset("/icons/favicon.ico").Path() }/>
+			<title>Skjutbana</title>
+		</head>
+		<body id="body" class="font-mitm">
+			<div id="sse" hx-ext="sse" sse-connect={ "/api/sse/" + version } sse-close="goodbye">
+				<div id="ssetarget" class="hidden" sse-swap="upgrade2"></div>
+				<div id="ssesink" class="hidden" sse-swap="tick"></div>
+				if view == "group" {
+					<div class="w-full flex flex-row justify-around" hx-get="/components/shotgroup" hx-trigger="sse:shot">
+						@ShotGroup(shots)
+					</div>
+				} else {
+					<div class="w-full flex flex-row justify-around" hx-get="/components/scorecard" hx-trigger="sse:shot">
+						@ScoreCard(shots)
+					</div>
+				}
+			</div>
+			//@Results(shots)
+		</body>
+		<script nonce={ csp.Nonce(ctx) }>
+			htmx.config.allowEval = false
+
+			let failedAvailabilityChecksCount = 0
+
+			function checkAvailable() {
+				var request = new XMLHttpRequest();
+				request.open('HEAD', document.location.href, true);
+				request.onerror = function() {
+					console.log('failed, retrying')
+					failedAvailabilityChecksCount++
+					if (failedAvailabilityChecksCount < 20) {
+						setTimeout(checkAvailable, 250)
+					} else {
+						setTimeout(checkAvailable, 5000)
+					}
+				};
+				request.onreadystatechange = function(){
+					if (request.readyState === 4){
+						if (request.status >= 200 && request.status < 400) {
+							console.log('refreshing page')
+							document.location.replace(document.location.href)
+						}
+					}
+				};
+				request.send();
+			}
+
+			document.body.addEventListener('htmx:sseClose', function (e) {
+				console.log('sse closed: ' + e.detail.type)
+				checkAvailable()
+				//document.location.replace(document.location.href)
+			})
+
+			document.getElementById('ssetarget').addEventListener('htmx:sseMessage', (evt) => {
+				console.log('sse message:')
+				//document.location.replace(document.location.href)
+			})
+		</script>
+	</html>
+}

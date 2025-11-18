@@ -1,2 +1,3 @@
 # siusmitm
-A custom visualiser for results from sius electronic scoring equiopment
+
+A custom visualiser for results from sius electronic scoring equipment

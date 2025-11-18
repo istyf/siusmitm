@@ -1,0 +1,206 @@
+package components
+
+import (
+	"fmt"
+	"github.com/istyf/siusmitm/pkg/mitm"
+	"math"
+	"time"
+
+	. "github.com/diwise/frontend-toolkit"
+	"github.com/diwise/frontend-toolkit/pkg/middleware/csp"
+)
+
+templ ShootingLog(version string, asset AssetLoaderFunc, shots []mitm.Shot, standing bool) {
+	<!DOCTYPE html>
+	<html>
+		<head>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<link href={ asset("/css/mitm.css").Path() } rel="stylesheet"/>
+			<script src={ asset("/js/htmx.min.js").Path() } nonce={ csp.Nonce(ctx) }></script>
+			<script src={ asset("/js/htmx-ext-sse.js").Path() } nonce={ csp.Nonce(ctx) }></script>
+			<link rel="icon" type="image/x-icon" href={ asset("/icons/favicon.ico").Path() }/>
+			<title>Skjutkort</title>
+		</head>
+		<body id="body" class="font-mitm">
+			<div id="sse" hx-ext="sse" sse-connect={ "/api/sse/" + version } sse-close="goodbye">
+				<div id="ssetarget" class="hidden" sse-swap="upgrade2"></div>
+				<div id="ssesink" class="hidden" sse-swap="tick"></div>
+				<div class="w-full flex flex-row justify-around" hx-get="/components/shootlog" hx-trigger="sse:shot">
+					@ShootingLogComponent(shots, standing)
+				</div>
+			</div>
+		</body>
+		<script nonce={ csp.Nonce(ctx) }>
+			htmx.config.allowEval = false
+
+			let failedAvailabilityChecksCount = 0
+
+			function checkAvailable() {
+				var request = new XMLHttpRequest();
+				request.open('HEAD', document.location.href, true);
+				request.onerror = function() {
+					console.log('failed, retrying')
+					failedAvailabilityChecksCount++
+					if (failedAvailabilityChecksCount < 20) {
+						setTimeout(checkAvailable, 250)
+					} else {
+						setTimeout(checkAvailable, 5000)
+					}
+				};
+				request.onreadystatechange = function(){
+					if (request.readyState === 4){
+						if (request.status >= 200 && request.status < 400) {
+							console.log('refreshing page')
+							document.location.replace(document.location.href)
+						}
+					}
+				};
+				request.send();
+			}
+
+			document.body.addEventListener('htmx:sseClose', function (e) {
+				console.log('sse closed: ' + e.detail.type)
+				checkAvailable()
+				//document.location.replace(document.location.href)
+			})
+
+			document.getElementById('ssetarget').addEventListener('htmx:sseMessage', (evt) => {
+				console.log('sse message:')
+				//document.location.replace(document.location.href)
+			})
+		</script>
+	</html>
+}
+
+templ logRow(shots []mitm.Shot, standing bool) {
+	<div class="w-full flex flex-row justify-between items-center md:px-4 gap-4">
+		<div class="w-1/12 flex flex-col items-center justify-around gap-1 text-center text-xs md:text-2xl">
+			<div class="w-10 text-[9px] md:w-12 md:text-xs border-1 border-blue-400">
+				if len(shots) > 0 {
+					{ shots[0].TimeOfImpact().Format("15:04") }
+				} else {
+					-
+				}
+			</div>
+			<div class="w-10 text-[9px] font-medium md:w-14 border-1 lg:border-2 text-sm md:text-lg border-blue-400">
+				if len(shots) > 2 {
+					{ 
+						func () string {
+							dur := shots[len(shots)-1].TimeOfImpact().Sub(shots[0].TimeOfImpact()).Seconds()
+							dur = math.Round((dur / float64(len(shots))) * float64(len(shots)+1))
+							return time.Duration(time.Second * time.Duration(dur)).String()
+						}() }
+				} else {
+					&nbsp;
+				}
+			</div>
+			<div class="w-10 text-[9px] md:w-12 md:text-xs border-1 border-blue-400">
+				if len(shots) > 0 {
+					{ shots[len(shots)-1].TimeOfImpact().Format("15:04") }
+				} else {
+					-
+				}
+			</div>
+		</div>
+		<div class="w-10/12 flex flew-row items-center justify-between gap-4">
+			<div class="w-7/8 flex flex-row justify-around">
+				for idx := range 10 {
+					<div class="flex flex-col w-1/12">
+						<div class="w-full font-medium font-xs">
+							&nbsp;
+						</div>
+						<div class="w-full">
+							if idx < len(shots) {
+								@Target(shots[idx:idx+1], targetConf{})
+							} else {
+								@Target([]mitm.Shot{}, targetConf{})
+							}
+						</div>
+						<div class="w-full font-medium font-xs text-center">
+							{ 
+								func() string {
+									if idx < len(shots) {
+										score := shots[idx].ScoreInTenths
+										if score >= 102 {
+											return fmt.Sprintf("%0.1f x", float64(score)/10.0)
+										} else {
+											return fmt.Sprintf("%0.1f", float64(score)/10.0)
+										}
+									}
+									return "."
+								}() }
+						</div>
+					</div>
+				}
+			</div>
+			<div class="w-1/8">
+				@Target(shots, targetConf{mpi: true})
+			</div>
+		</div>
+		<div
+			class="w-1/12 flex flex-col items-center justify-around group"
+			data-medal={ func() string {
+				_, _, medal := calculateScoreAndLevel(shots, standing)
+				return medal
+			}() }
+		>
+			<div class="w-10 md:w-14 lg:w-20 text-[9px] md:text-xs lg:text-xl font-medium border-1 lg:border-2 border-blue-400 text-center">
+				{ 
+					func() string {
+						decimals, noDecimals, _ := calculateScoreAndLevel(shots, standing)
+						return fmt.Sprintf("%.1f (%d)", decimals/10.0, noDecimals)
+					}() }
+			</div>
+			<div class="hidden group-data-[medal=3stars]:flex flex-row mt-1">
+				@templ.Raw(fmt.Sprintf(starFmt, "size-3 md:size-5 xl:size-7 stroke-1 stroke-[#cccccc] fill-[#ffd700]"))
+				@templ.Raw(fmt.Sprintf(starFmt, "size-3 md:size-5 xl:size-7 stroke-1 stroke-[#cccccc] fill-[#ffd700]"))
+				@templ.Raw(fmt.Sprintf(starFmt, "size-3 md:size-5 xl:size-7 stroke-1 stroke-[#cccccc] fill-[#ffd700]"))
+			</div>
+			<div class="hidden group-data-[medal=2stars]:flex flex-row mt-1">
+				@templ.Raw(fmt.Sprintf(starFmt, "size-3 md:size-5 xl:size-7 stroke-1 stroke-[#cccccc] fill-[#ffd700]"))
+				@templ.Raw(fmt.Sprintf(starFmt, "size-3 md:size-5 xl:size-7 stroke-1 stroke-[#cccccc] fill-[#ffd700]"))
+			</div>
+			<div class="hidden group-data-[medal=star]:flex flex-row mt-1">
+				@templ.Raw(fmt.Sprintf(starFmt, "size-3 md:size-5 xl:size-7 stroke-1 stroke-[#cccccc] fill-[#ffd700]"))
+			</div>
+		</div>
+	</div>
+}
+
+func logRows(shots []mitm.Shot, standing bool) []templ.Component {
+	rows := make([]templ.Component, 0, 6)
+	rowSize := 10
+
+	for rowIdx := range cap(rows) {
+		rowShots := []mitm.Shot{}
+
+		if len(shots) > (rowIdx * rowSize) {
+			rowShots = shots[rowIdx*rowSize:]
+			if len(rowShots) > rowSize {
+				rowShots = rowShots[0:rowSize]
+			}
+		}
+
+		rows = append(rows, logRow(rowShots, standing))
+	}
+
+	return rows
+}
+
+templ ShootingLogHeader(shots []mitm.Shot) {
+	// Namn: Lowe Styf, Klass: L13
+	// Score (max 10, max 40)
+	// Datum
+	// Träning
+	// Klubb
+	@Target(shots, targetConf{mpi: true, bwp: true})
+}
+
+templ ShootingLogComponent(shots []mitm.Shot, standing bool) {
+	<div class="w-full flex flex-col gap-2">
+		//@ShootingLogHeader(shots)
+		for _, row := range logRows(shots, standing) {
+			@row
+		}
+	</div>
+}

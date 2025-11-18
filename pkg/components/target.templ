@@ -1,0 +1,978 @@
+package components
+
+import (
+	"fmt"
+	"math"
+	"slices"
+
+	"github.com/istyf/siusmitm/pkg/mitm"
+	"strings"
+)
+
+templ Diagram(mr3, mr5, mr10 []float64, minMR, mr, maxMR float64) {
+	<svg
+		class="w-full"
+		xmlns="http://www.w3.org/2000/svg"
+		viewBox="0 0 800 100"
+		fill="none"
+		stroke-width="1"
+		stroke-linecap="round"
+		stroke-linejoin="round"
+	>
+		<line
+			x1="0"
+			y1={ 100 - int((mr-minMR)*100.0/(maxMR-minMR)) }
+			x2="799"
+			y2={ 100 - int((mr-minMR)*100.0/(maxMR-minMR)) }
+			stroke="#000000"
+			stroke-width="1"
+		></line>
+		<line
+			x1="0"
+			y1={ 100 - int((mr3[0]-minMR)*100.0/(maxMR-minMR)) }
+			x2={ int(800 / len(mr3)) }
+			y2={ 100 - int((mr3[1]-minMR)*100.0/(maxMR-minMR)) }
+			stroke="#dddddd"
+			stroke-width="1"
+		></line>
+		for idx := range len(mr3)-2 {
+			<line
+				x1={ int(((idx + 1) * 800) / len(mr3)) }
+				y1={ 100 - int((mr3[idx+1]-minMR)*100.0/(maxMR-minMR)) }
+				x2={ int(((idx + 2) * 800) / len(mr3)) }
+				y2={ 100 - int((mr3[idx+2]-minMR)*100.0/(maxMR-minMR)) }
+				stroke="#dddddd"
+				stroke-width="1"
+			></line>
+		}
+		<line
+			x1="0"
+			y1={ 100 - int((mr5[0]-minMR)*100.0/(maxMR-minMR)) }
+			x2={ int(800 / len(mr5)) }
+			y2={ 100 - int((mr5[1]-minMR)*100.0/(maxMR-minMR)) }
+			stroke="#bbbbbb"
+			stroke-width="1"
+		></line>
+		for idx := range len(mr5)-2 {
+			<line
+				x1={ int(((idx + 1) * 800) / len(mr5)) }
+				y1={ 100 - int((mr5[idx+1]-minMR)*100.0/(maxMR-minMR)) }
+				x2={ int(((idx + 2) * 800) / len(mr5)) }
+				y2={ 100 - int((mr5[idx+2]-minMR)*100.0/(maxMR-minMR)) }
+				stroke="#bbbbbb"
+				stroke-width="1"
+			></line>
+		}
+		<line
+			x1="0"
+			y1={ 100 - int((mr10[0]-minMR)*100.0/(maxMR-minMR)) }
+			x2={ int(800 / len(mr5)) }
+			y2={ 100 - int((mr10[1]-minMR)*100.0/(maxMR-minMR)) }
+			stroke="#999999"
+			stroke-width="1"
+		></line>
+		for idx := range len(mr10)-2 {
+			<line
+				x1={ int(((idx + 1) * 800) / len(mr10)) }
+				y1={ 100 - int((mr10[idx+1]-minMR)*100.0/(maxMR-minMR)) }
+				x2={ int(((idx + 2) * 800) / len(mr10)) }
+				y2={ 100 - int((mr10[idx+2]-minMR)*100.0/(maxMR-minMR)) }
+				stroke="#999999"
+				stroke-width="1"
+			></line>
+		}
+	</svg>
+}
+
+func NewDiagram(shots []mitm.Shot) templ.Component {
+
+	numShots := len(shots)
+
+	var maxMR float64
+	var minMR float64 = 100000.0
+
+	mr3 := make([]float64, 0, numShots)
+	mr5 := make([]float64, 0, numShots)
+	mr10 := make([]float64, 0, numShots)
+
+	_, mr := CalcMPI(shots[0:3])
+	mr3 = append(mr3, mr, mr, mr)
+
+	_, mr = CalcMPI(shots[0:5])
+	mr5 = append(mr5, mr, mr, mr, mr, mr)
+	mr10 = append(mr10, mr, mr, mr, mr, mr)
+
+	for idx := range numShots - 3 {
+		_, mr := CalcMPI(shots[idx+1 : idx+4])
+		mr3 = append(mr3, mr)
+		if mr < minMR {
+			minMR = mr
+		}
+		if mr > maxMR {
+			maxMR = mr
+		}
+	}
+
+	for idx := range numShots - 5 {
+		_, mr := CalcMPI(shots[idx+1 : idx+6])
+		mr5 = append(mr5, mr)
+		if mr < minMR {
+			minMR = mr
+		}
+		if mr > maxMR {
+			maxMR = mr
+		}
+	}
+
+	for idx := range 4 {
+		_, mr = CalcMPI(shots[0 : 6+idx])
+		if mr < minMR {
+			minMR = mr
+		}
+		if mr > maxMR {
+			maxMR = mr
+		}
+		mr10 = append(mr10, mr)
+	}
+
+	for idx := range numShots - 10 {
+		_, mr := CalcMPI(shots[idx+1 : idx+11])
+		mr10 = append(mr10, mr)
+		if mr < minMR {
+			minMR = mr
+		}
+		if mr > maxMR {
+			maxMR = mr
+		}
+	}
+
+	_, mr = CalcMPI(shots)
+
+	return Diagram(mr3, mr5, mr10, minMR, mr, maxMR)
+}
+
+func lastTen(shots []mitm.Shot) []mitm.Shot {
+	if len(shots) <= 10 {
+		return shots
+	}
+
+	return shots[len(shots)-10:]
+}
+
+func series(shots []mitm.Shot, index int) string {
+	if len(shots) < index*10 {
+		return " "
+	}
+
+	var result int64 = 0
+
+	for _, s := range shots[(index-1)*10 : index*10] {
+		result += s.ScoreInTenths
+	}
+
+	return fmt.Sprintf("%0.1f", float64(result)/10.0)
+}
+
+templ NewScoreCard(shots []mitm.Shot) {
+	<div class="w-9/10 max-h-lvh flex flex-row p-20">
+		<div class="w-6/10 max-h-lvh">
+			@Target(lastTen(shots), targetConf{bwp: false, mpi: true, history: true, style: circle})
+		</div>
+		<div class="w-4/10 ml-16 flex flex-col justify-around">
+			<div class="w-full">
+				<div class="w-full flex flex-row flex-wrap">
+					if len(shots) >= 10 {
+						if len(shots) <= 40 {
+							<div class="w-1/4 border-1 pl-4 py-4 text-5xl text-center">{ series(shots, 1) }</div>
+							<div class="w-1/4 border-1 pl-4 py-4 text-5xl text-center">{ series(shots, 2) }</div>
+							<div class="w-1/4 border-1 pl-4 py-4 text-5xl text-center">{ series(shots, 3) }</div>
+							<div class="w-1/4 border-1 pl-4 py-4 text-5xl text-center">{ series(shots, 4) }</div>
+						} else {
+							<div class="w-1/6 border-1 pl-4 py-4 text-4xl text-center">{ series(shots, 1) }</div>
+							<div class="w-1/6 border-1 pl-4 py-4 text-4xl text-center">{ series(shots, 2) }</div>
+							<div class="w-1/6 border-1 pl-4 py-4 text-4xl text-center">{ series(shots, 3) }</div>
+							<div class="w-1/6 border-1 pl-4 py-4 text-4xl text-center">{ series(shots, 4) }</div>
+							<div class="w-1/6 border-1 pl-4 py-4 text-4xl text-center">{ series(shots, 5) }</div>
+							<div class="w-1/6 border-1 pl-4 py-4 text-4xl text-center">{ series(shots, 6) }</div>
+						}
+					}
+					for idx := range 5 {
+						<div class="w-1/4 border-1 border-r-0 pl-4 py-4">
+							<span class="text-5xl">
+								{ 
+								func () string {
+									if len(shots) >= 10 {
+										return fmt.Sprintf("%02d:", (len(shots)-10+idx+1))
+									} else {
+										return fmt.Sprintf("%02d:", (idx+1))
+									}
+								}() }
+							</span>
+						</div>
+						<div class="w-1/4 border-1 border-l-0 pr-4 py-4">
+							<span class="block text-5xl text-right">
+								{ 
+								func() string {
+									var shotIdx int = idx
+
+									if len(shots) > 10 {
+										shotIdx += len(shots)-10
+									}
+									
+									if len(shots) > shotIdx {
+										return fmt.Sprintf("%0.1f", float64(shots[shotIdx].ScoreInTenths)/10.0)
+									}
+									return ""
+								}() }
+							</span>
+						</div>
+						<div class="w-1/4 border-1 border-r-0 pl-4 py-4">
+							<span class="text-5xl">
+								{ 
+								func () string {
+									if len(shots) >= 10 {
+										return fmt.Sprintf("%02d:", (len(shots)-10+idx+6))
+									} else {
+										return fmt.Sprintf("%02d:", (idx+6))
+									}
+								}() }
+							</span>
+						</div>
+						<div class="w-1/4 border-1 border-l-0 pr-4 py-4">
+							<span class="block text-5xl text-right">
+								{ 
+								func() string {
+									var shotIdx int = idx + 5
+
+									if len(shots) > 10 {
+										shotIdx += len(shots)-10
+									}
+									
+									if len(shots) > shotIdx {
+										return fmt.Sprintf("%0.1f", float64(shots[shotIdx].ScoreInTenths)/10.0)
+									}
+									return ""
+								}() }
+							</span>
+						</div>
+					}
+					<div class="w-1/2 flex flex-row justify-around border-2">
+						<span class="text-7xl py-2">
+							{ 
+						func () string {
+							var total int64
+							for n := range 10 {
+								idx := len(shots) - n - 1
+								if idx >= 0 {
+									total += shots[idx].ScoreInTenths
+								}
+							}
+							return fmt.Sprintf("%0.1f", float64(total)/10.0)
+						}() }
+						</span>
+					</div>
+					<div class="w-1/2 bg-black flex flex-row justify-around border-2">
+						<span class="text-7xl text-white py-2" hx-get="/components/results" hx-target="#body">
+							{ 
+							func() string {
+								var total int64
+								for _, s := range shots {
+									total += s.ScoreInTenths
+								}
+								return fmt.Sprintf("%0.1f", float64(total)/10.0)
+							}() }
+						</span>
+					</div>
+				</div>
+				if len(shots) >= 40 {
+					<div class="w-full flex flex-row justify-around mt-20 text-5xl">
+						<a href="/shootinglog">
+							<div class="border-1 bg-amber-300 hover:bg-amber-400 p-6 font-mono">
+								Skjutkort
+							</div>
+						</a>
+						<a href="/api/shots">
+							<div class="border-1 bg-amber-300 hover:bg-amber-400 p-6 font-mono">
+								Spara Data
+							</div>
+						</a>
+					</div>
+				}
+			</div>
+		</div>
+	</div>
+}
+
+func ScoreCard(shots []mitm.Shot) templ.Component {
+	return NewScoreCard(shots)
+}
+
+templ NewShotGroup(shots []mitm.Shot) {
+	<div class="w-9/10 max-h-lvh flex flex-row p-20">
+		<div class="w-2/10 ml-16 flex flex-col justify-around">
+			<div class="w-full">
+				<div class="w-full flex flex-row flex-wrap"></div>
+			</div>
+		</div>
+		<div class="w-6/10 max-h-lvh">
+			@Target(lastTen(shots), targetConf{bwp: false, mpi: false, history: true, style: plus})
+		</div>
+		<div class="w-2/10 ml-16 flex flex-col justify-around">
+			<div class="w-full">
+				<div class="w-full flex flex-row flex-wrap"></div>
+			</div>
+		</div>
+	</div>
+}
+
+func ShotGroup(shots []mitm.Shot) templ.Component {
+	return NewShotGroup(shots)
+}
+
+templ NewResults(shots []mitm.Shot, standing bool) {
+	if len(shots) > 10 {
+		<div class="flex flex-row flex-wrap justify-around gap-4 p-t-8">
+			for _, target := range Targets(shots, standing) {
+				<div class="w-[24%]">
+					@target
+				</div>
+			}
+		</div>
+	}
+}
+
+func Results(shots []mitm.Shot, standing bool) templ.Component {
+	return NewResults(shots, standing)
+}
+
+templ ShotCircle(idx int64, shotAttrs, labelAttrs templ.Attributes) {
+	<circle r="215" { shotAttrs... }></circle>
+	<text font-size="200px" { labelAttrs... }>{ fmt.Sprintf("%d", idx) }</text>
+}
+
+templ ShotPlus(x, y int, shotAttrs templ.Attributes) {
+	<line x1={ x - 50 } y1={ y } x2={ x + 50 } y2={ y } stroke={ shotAttrs["fill"].(string) } stroke-width={ shotAttrs["stroke-width"].(string) }></line>
+	<line x1={ x } y1={ y - 50 } x2={ x } y2={ y + 50 } stroke={ shotAttrs["fill"].(string) } stroke-width={ shotAttrs["stroke-width"].(string) }></line>
+}
+
+func NewShot(x, y int, shot mitm.Shot, conf shotConf) templ.Component {
+
+	labelOffsetX := 80
+	labelOffsetY := 70
+
+	if shot.Idx < 10 {
+		labelOffsetX = labelOffsetX - 40
+	}
+
+	labelAttrs := templ.Attributes{
+		"x":     fmt.Sprintf("%d", x-labelOffsetX+int(shot.PointOfImpact.X*100000)),
+		"y":     fmt.Sprintf("%d", y+labelOffsetY-int(shot.PointOfImpact.Y*100000)),
+		"color": "#666666",
+		"fill":  "#666666",
+	}
+
+	shotAttrs := templ.Attributes{
+		"cx":   fmt.Sprintf("%d", x+int(shot.PointOfImpact.X*100000)),
+		"cy":   fmt.Sprintf("%d", y-int(shot.PointOfImpact.Y*100000)),
+		"fill": "#65a30d",
+	}
+
+	if conf.style == plus {
+		shotAttrs["fill"] = "#39FF14"
+		shotAttrs["stroke-width"] = "10"
+	}
+
+	if conf.history == 0 {
+		if conf.style == circle {
+			if shot.ScoreInTenths >= 100 {
+				shotAttrs["fill"] = "#ffff00"
+			} else if shot.ScoreInTenths >= 80 {
+				shotAttrs["fill"] = "#3c3ce8"
+			} else {
+				shotAttrs["fill"] = "#ff0000"
+			}
+		} else {
+			shotAttrs["fill"] = "#ffff00"
+			shotAttrs["stroke-width"] = "20"
+		}
+
+		labelAttrs["fill"] = shotAttrs["fill"]
+		labelAttrs["color"] = shotAttrs["fill"]
+	} else if conf.style == circle && conf.history < 5 {
+		shotAttrs["fill"] = "#39FF14"
+	}
+
+	shotAttrs["stroke"] = "#444444"
+
+	if conf.style == circle {
+		return ShotCircle(shot.Idx, shotAttrs, labelAttrs)
+	}
+
+	return ShotPlus(x+int(shot.PointOfImpact.X*100000), y-int(shot.PointOfImpact.Y*100000), shotAttrs)
+}
+
+templ BWPH(x, y int, q1, q2, m, q3, q4 float64) {
+	<rect
+		x={ fmt.Sprintf("%d", x-225+int(q1*100000)) }
+		y={ y }
+		width={ fmt.Sprintf("%d", int((q4-q1+0.0045)*100000)) }
+		height="200"
+		fill="#cccccccc"
+	></rect>
+	<line
+		x1={ fmt.Sprintf("%d", x+int(q1*100000)) }
+		y1={ y + 50 }
+		x2={ fmt.Sprintf("%d", x+int(q1*100000)) }
+		y2={ y + 150 }
+		stroke="red"
+		stroke-width="10"
+	></line>
+	<line
+		x1={ fmt.Sprintf("%d", x+int(q1*100000)) }
+		y1={ y + 100 }
+		x2={ fmt.Sprintf("%d", x+int(q2*100000)) }
+		y2={ y + 100 }
+		stroke="red"
+		stroke-width="10"
+	></line>
+	<line
+		x1={ fmt.Sprintf("%d", x+int(q3*100000)) }
+		y1={ y + 100 }
+		x2={ fmt.Sprintf("%d", x+int(q4*100000)) }
+		y2={ y + 100 }
+		stroke="red"
+		stroke-width="10"
+	></line>
+	<line
+		x1={ fmt.Sprintf("%d", x+int(m*100000)) }
+		y1={ y + 25 }
+		x2={ fmt.Sprintf("%d", x+int(m*100000)) }
+		y2={ y + 175 }
+		stroke="red"
+		stroke-width="10"
+	></line>
+	<rect
+		x={ fmt.Sprintf("%d", x+int(q2*100000)) }
+		y={ y + 25 }
+		width={ fmt.Sprintf("%d", int((q3-q2)*100000)) }
+		height="150"
+	></rect>
+	<line
+		x1={ fmt.Sprintf("%d", x+int(q4*100000)) }
+		y1={ y + 50 }
+		x2={ fmt.Sprintf("%d", x+int(q4*100000)) }
+		y2={ y + 150 }
+		stroke="red"
+		stroke-width="10"
+	></line>
+}
+
+templ BWPV(x, y int, q1, q2, m, q3, q4 float64) {
+	<rect
+		x={ x }
+		y={ fmt.Sprintf("%d", y-int((q4+0.00225)*100000)) }
+		width="200"
+		height={ fmt.Sprintf("%d", int((q4-q1+0.0045)*100000)) }
+		fill="#cccccccc"
+	></rect>
+	<line
+		x1={ x + 50 }
+		y1={ fmt.Sprintf("%d", y-int(q4*100000)) }
+		x2={ x + 150 }
+		y2={ fmt.Sprintf("%d", y-int(q4*100000)) }
+		stroke="red"
+		stroke-width="10"
+	></line>
+	<line
+		x1={ x + 100 }
+		y1={ fmt.Sprintf("%d", y-int(q4*100000)) }
+		x2={ x + 100 }
+		y2={ fmt.Sprintf("%d", y-int(q3*100000)) }
+		stroke="red"
+		stroke-width="10"
+	></line>
+	<line
+		x1={ x + 100 }
+		y1={ fmt.Sprintf("%d", y-int(q2*100000)) }
+		x2={ x + 100 }
+		y2={ fmt.Sprintf("%d", y-int(q1*100000)) }
+		stroke="red"
+		stroke-width="10"
+	></line>
+	<line
+		x1={ x + 25 }
+		y1={ fmt.Sprintf("%d", y-int(m*100000)) }
+		x2={ x + 175 }
+		y2={ fmt.Sprintf("%d", y-int(m*100000)) }
+		stroke="red"
+		stroke-width="10"
+	></line>
+	<rect
+		x={ x + 25 }
+		y={ fmt.Sprintf("%d", y-int(q3*100000)) }
+		width="150"
+		height={ fmt.Sprintf("%d", int((q3-q2)*100000)) }
+	></rect>
+	<line
+		x1={ x + 50 }
+		y1={ fmt.Sprintf("%d", y-int(q1*100000)) }
+		x2={ x + 150 }
+		Y2={ fmt.Sprintf("%d", y-int(q1*100000)) }
+		stroke="red"
+		stroke-width="10"
+	></line>
+}
+
+func CalcBWP(shots []mitm.Shot, value func(mitm.Shot) float64) (min float64, q1 float64, median float64, q3 float64, max float64) {
+
+	numShots := len(shots)
+
+	if numShots == 0 {
+		return
+	}
+
+	vals := make([]float64, 0, numShots)
+
+	for _, s := range shots {
+		vals = append(vals, value(s))
+	}
+
+	slices.Sort(vals)
+
+	min = vals[0]
+	max = vals[numShots-1]
+
+	q1idx := numShots / 4
+	q1 = vals[q1idx]
+	q3idx := (numShots * 3) / 4
+	q3 = vals[q3idx]
+
+	iqr := q3 - q1
+	outlierlimit := (q3 + (iqr * 1.5))
+	if max > outlierlimit {
+		max = outlierlimit
+	}
+
+	outlierlimit = q1 - (iqr * 1.5)
+	if min < outlierlimit {
+		min = outlierlimit
+	}
+
+	if numShots > 2 {
+		if numShots%2 == 0 {
+			median = (vals[numShots/2] + vals[(numShots/2)-1]) / 2
+		} else {
+			median = vals[numShots/2]
+		}
+	} else if numShots == 2 {
+		median = (vals[0] + vals[1]) / 2
+	} else {
+		median = vals[0]
+	}
+
+	return
+}
+
+func Targets(shots []mitm.Shot, standing bool) []templ.Component {
+	numShots := len(shots)
+	if numShots < 6 {
+		return []templ.Component{Target(shots, targetConf{bwp: true, history: true})}
+	}
+
+	targets := make([]templ.Component, 0, 20)
+
+	for seriesIdx := range numShots / 10 {
+		serie := shots[seriesIdx*10:]
+		if len(serie) > 10 {
+			serie = serie[0:10]
+		}
+
+		targets = append(targets, ResultTarget(serie, standing))
+	}
+
+	if len(shots) > 40 {
+		targets = append(targets, ResultTarget(shots[0:40], standing))
+	}
+
+	targets = append(targets, ResultTarget(shots, standing))
+
+	return targets
+}
+
+templ MPI(cx, cy int, x, y, mr float64) {
+	<rect
+		x={ fmt.Sprintf("%d", cx-50+int((x*100000))) }
+		y={ fmt.Sprintf("%d", cy-50-int(y*100000)) }
+		width="100"
+		height="100"
+		fill="#ffff00"
+		stroke="#000000"
+		stroke-width="2"
+	></rect>
+	<circle
+		cx={ fmt.Sprintf("%d", cx+int((x*100000))) }
+		cy={ fmt.Sprintf("%d", cy-int((y*100000))) }
+		r={ fmt.Sprintf("%d", int(mr*100000)) }
+		stroke="#ffff00"
+		stroke-width="20"
+	></circle>
+}
+
+templ Triangle(cx, cy int, x, y float64) {
+	<polygon
+		points={ fmt.Sprintf(
+		"%d,%d %d,%d %d,%d %d,%d",
+		cx+int(x*100000), cy-int(y*100000)-25,
+		cx+int(x*100000)-25, cy-int(y*100000),
+		cx+int(x*100000), cy-int(y*100000)+25,
+		cx+int(x*100000)+25, cy-int(y*100000),
+		) }
+		stroke="#39FF14"
+		fill="#39FF14"
+		stroke-width="10"
+	></polygon>
+}
+
+templ Score(x, y int, total float64) {
+	<text x="2500" y="4400" font-size="640px" fill="#000000">{ fmt.Sprintf("%0.1f", total) }</text>
+}
+
+func CalcMPI(shots []mitm.Shot) (mitm.Point, float64) {
+	pt := mitm.Point{}
+	var mr float64
+
+	if numberOfShots := len(shots); numberOfShots > 0 {
+		for idx := range numberOfShots {
+			pt.X += shots[idx].PointOfImpact.X
+			pt.Y += shots[idx].PointOfImpact.Y
+		}
+
+		pt.X = pt.X / float64(numberOfShots)
+		pt.Y = pt.Y / float64(numberOfShots)
+
+		for idx := range numberOfShots {
+			mr += distance(pt, shots[idx].PointOfImpact)
+		}
+		mr = (mr / float64(numberOfShots))
+	}
+
+	return pt, mr
+}
+
+func calculateScoreAndLevel(shots []mitm.Shot, standing bool) (float64, int64, string) {
+	var total float64 = 0.0
+	var totalNoDecimal int64 = 0
+
+	for _, s := range shots {
+		total += float64(s.ScoreInTenths)
+		totalNoDecimal += s.ScoreInTenths / 10
+	}
+
+	medal := "none"
+
+	if len(shots) == 5 {
+		if totalNoDecimal == 50 || (standing && totalNoDecimal >= 46) {
+			medal = "3stars"
+		} else if totalNoDecimal == 49 || (standing && totalNoDecimal >= 42) {
+			medal = "2stars"
+		} else if totalNoDecimal == 48 || (standing && totalNoDecimal >= 38) {
+			medal = "star"
+		}
+	} else if len(shots) == 10 {
+		if totalNoDecimal == 100 || (standing && totalNoDecimal >= 88) {
+			medal = "3stars"
+		} else if totalNoDecimal >= 98 || (standing && totalNoDecimal >= 84) {
+			medal = "2stars"
+		} else if totalNoDecimal >= 96 || (standing && totalNoDecimal >= 80) {
+			medal = "star"
+		}
+	} else if len(shots) == 40 {
+		if totalNoDecimal == 400 || (standing && totalNoDecimal >= 352) {
+			medal = "3stars"
+		} else if totalNoDecimal >= 392 || (standing && totalNoDecimal >= 336) {
+			medal = "2stars"
+		} else if totalNoDecimal >= 384 || (standing && totalNoDecimal >= 320) {
+			medal = "star"
+		}
+	}
+
+	return total, totalNoDecimal, medal
+}
+
+func ResultTarget(shots []mitm.Shot, standing bool) templ.Component {
+
+	total, totalNoDecimal, medal := calculateScoreAndLevel(shots, standing)
+
+	return NewResultTarget(shots, total/10.0, totalNoDecimal, medal)
+}
+
+const starFmt string = `<svg class="%s" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" stroke-linecap="round" stroke-linejoin="round"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></svg>`
+const trophyFmt string = `<svg class="%s" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6M18 9h1.5a2.5 2.5 0 0 0 0-5H18M4 22h16M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>`
+
+templ NewResultTarget(shots []mitm.Shot, decimalScore float64, score int64, medal string) {
+	<div class="w-9/10 flex flex-col justify-between items-center group" data-medal={ medal }>
+		<div class="w-full">
+			@Target(shots, targetConf{bwp: true})
+		</div>
+		<span class="p-t-8 text-4xl border-2 px-2 mt-2">
+			{  func() string { return fmt.Sprintf("%0.1f (%d)", decimalScore, score) }() }
+		</span>
+		<div class="hidden group-data-[medal=3stars]:flex flex-row mt-1">
+			@templ.Raw(fmt.Sprintf(starFmt, "size-9 stroke-1 stroke-[#cccccc] fill-[#ffd700]"))
+			@templ.Raw(fmt.Sprintf(starFmt, "size-9 stroke-1 stroke-[#cccccc] fill-[#ffd700]"))
+			@templ.Raw(fmt.Sprintf(starFmt, "size-9 stroke-1 stroke-[#cccccc] fill-[#ffd700]"))
+		</div>
+		<div class="hidden group-data-[medal=2stars]:flex flex-row mt-1">
+			@templ.Raw(fmt.Sprintf(starFmt, "size-9 stroke-1 stroke-[#cccccc] fill-[#ffd700]"))
+			@templ.Raw(fmt.Sprintf(starFmt, "size-9 stroke-1 stroke-[#cccccc] fill-[#ffd700]"))
+		</div>
+		<div class="hidden group-data-[medal=star]:flex flex-row mt-1">
+			@templ.Raw(fmt.Sprintf(starFmt, "size-9 stroke-1 stroke-[#cccccc] fill-[#ffd700]"))
+		</div>
+	</div>
+}
+
+// cross returns the z-component of the cross product of OA x OB
+// where O is the origin point, but in practice we compute (a - o) x (b - o).
+func cross(o, a, b mitm.Shot) float64 {
+	return float64((a.X()-o.X())*(b.Y()-o.Y()) - (a.Y()-o.Y())*(b.X()-o.X()))
+}
+
+func distance(a, b mitm.Point) float64 {
+	xdelta := a.X - b.X
+	ydelta := a.Y - b.Y
+
+	return math.Abs(
+		math.Sqrt(xdelta*xdelta + ydelta*ydelta),
+	)
+}
+
+func findConvexHullCoordinates(targetCenterX, targetCenterY int, shots []mitm.Shot) string {
+	// Make a copy so the original slice isn't modified
+	n := len(shots)
+	pts := slices.Clone(shots)
+
+	mpi, averageDistance := CalcMPI(shots)
+
+	var s2 float64
+	for _, s := range shots {
+		s2 = s2 + math.Pow(distance(mpi, s.PointOfImpact)-averageDistance, 2.0)
+	}
+	s2 = s2 / float64(n-1)
+	stddev := math.Sqrt(s2)
+
+	pts = slices.DeleteFunc(pts, func(s mitm.Shot) bool {
+		limit := averageDistance + (stddev) //stddev * 3
+		d := distance(mpi, s.PointOfImpact)
+		removed := d > limit
+		return removed
+	})
+	n = len(pts)
+
+	// Sort by X, then by Y
+	slices.SortStableFunc(pts, func(a, b mitm.Shot) int {
+		const Scale float64 = 1000000
+
+		if a.X() == b.X() {
+			return int((a.Y() - b.Y()) * Scale)
+		}
+		return int((a.X() - b.X()) * Scale)
+	})
+
+	// Remove duplicates to avoid degenerate hulls
+	uniq := make([]mitm.Shot, 0, n)
+	for i := 0; i < n; i++ {
+		if i == 0 || pts[i].X() != pts[i-1].X() || pts[i].Y() != pts[i-1].Y() {
+			uniq = append(uniq, pts[i])
+		}
+	}
+
+	pts = uniq
+	n = len(pts)
+	if n <= 2 {
+		return ""
+	}
+
+	// Build lower hull
+	lower := make([]mitm.Shot, 0, n)
+	for i := 0; i < n; i++ {
+		for len(lower) >= 2 && cross(lower[len(lower)-2], lower[len(lower)-1], pts[i]) <= 0 {
+			// non-left turn; remove last
+			lower = lower[:len(lower)-1]
+		}
+		lower = append(lower, pts[i])
+	}
+
+	// Build upper hull
+	upper := make([]mitm.Shot, 0, n)
+	for i := n - 1; i >= 0; i-- {
+		for len(upper) >= 2 && cross(upper[len(upper)-2], upper[len(upper)-1], pts[i]) <= 0 {
+			upper = upper[:len(upper)-1]
+		}
+		upper = append(upper, pts[i])
+	}
+
+	// Remove last point of lower and last point of upper to avoid duplicates
+	lower = lower[:len(lower)-1]
+	upper = upper[:len(upper)-1]
+
+	hull := append(lower, upper...)
+
+	coords := make([]string, 0, len(hull)+1)
+
+	for _, h := range hull {
+		coords = append(coords, fmt.Sprintf("%d,%d", targetCenterX+int(h.X()*100000), targetCenterY-int(h.Y()*100000)))
+	}
+
+	result := strings.Join(coords, " ")
+	return result
+}
+
+type shotStyle int
+
+const (
+	circle shotStyle = iota
+	plus
+)
+
+type shotConf struct {
+	history int
+	style   shotStyle
+}
+
+type targetConf struct {
+	bwp     bool
+	history bool
+	mpi     bool
+	style   shotStyle
+}
+
+func Target(shots []mitm.Shot, conf targetConf) templ.Component {
+	shotComponents := make([]templ.Component, 0, 60)
+
+	var history int = 100
+	var minRing int = 8
+	var targetCenterX int = 560
+	var targetCenterY int = 560
+
+	mpi, averageRadius := CalcMPI(shots)
+
+	var convexHullCoords string
+
+	if conf.style == plus {
+		for idx := range len(shots) {
+			shots[idx].PointOfImpact.X = shots[idx].PointOfImpact.X - mpi.X
+			shots[idx].PointOfImpact.Y = shots[idx].PointOfImpact.Y - mpi.Y
+		}
+		mpi, averageRadius = CalcMPI(shots)
+	}
+
+	if len(shots) > 0 {
+
+		lowestScoreShot := slices.MinFunc(shots, func(lhs mitm.Shot, rhs mitm.Shot) int { return int(lhs.ScoreInTenths - rhs.ScoreInTenths) })
+
+		if lowestScoreShot.ScoreInTenths < 97 {
+			minRing = int((lowestScoreShot.ScoreInTenths - 16) / 10)
+			targetCenterX = 2310 - ((minRing - 1) * 250)
+			targetCenterY = targetCenterX
+		}
+
+		for idx, s := range shots {
+			if conf.history {
+				history = len(shots) - idx - 1
+			}
+			shotComponents = append(shotComponents, NewShot(
+				targetCenterX, targetCenterY, s,
+				shotConf{
+					history: history,
+					style:   conf.style,
+				}),
+			)
+		}
+
+		if conf.mpi {
+			shotComponents = append(shotComponents, MPI(targetCenterX, targetCenterY, mpi.X, mpi.Y, averageRadius))
+		}
+
+		if len(shots) > 5 && conf.bwp {
+			q1, q2, m, q3, q4 := CalcBWP(shots, func(s mitm.Shot) float64 { return s.PointOfImpact.X })
+			shotComponents = append(shotComponents, BWPH(targetCenterX, targetCenterY+2330-((minRing)*250), q1, q2, m, q3, q4))
+
+			q1, q2, m, q3, q4 = CalcBWP(shots, func(s mitm.Shot) float64 { return s.PointOfImpact.Y })
+			shotComponents = append(shotComponents, BWPV(targetCenterX+2330-((minRing)*250), targetCenterY, q1, q2, m, q3, q4))
+		}
+
+		if conf.style == plus {
+			convexHullCoords = findConvexHullCoordinates(targetCenterX, targetCenterY, shots)
+		}
+	}
+
+	return NewTarget(targetCenterX, targetCenterY, minRing, shotComponents, convexHullCoords)
+}
+
+templ NewTarget(cx, cy, firstRing int, shots []templ.Component, group string) {
+	<svg xmlns="http://www.w3.org/2000/svg" viewBox={ fmt.Sprintf("0 0 %d %d", cx*2, cy*2) } fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+		<circle cx={ cx } cy={ cy } r={ map[int]int{1: 1515, 2: 1515, 3: 1515, 4: 1515, 5: 1265, 6: 1015, 7: 765, 8: 515, 9: 515}[firstRing] } fill="#000000" stroke="#000000"></circle>
+		<circle cx={ cx } cy={ cy } r="15" fill="#ffffff"></circle>
+		<circle cx={ cx } cy={ cy } r="265" color="#ffffff"></circle>
+		<circle cx={ cx } cy={ cy } r="515" color="#ffffff"></circle>
+		<text x={ cx - 420 } y={ cy + 55 } font-size="160px" color="#ffffff" fill="#ffffff">8</text>
+		<text x={ cx - 30 } y={ cy - 335 } font-size="160px" color="#ffffff" fill="#ffffff">8</text>
+		<text x={ cx + 350 } y={ cy + 55 } font-size="160px" color="#ffffff" fill="#ffffff">8</text>
+		<text x={ cx - 30 } y={ cy + 435 } font-size="160px" color="#ffffff" fill="#ffffff">8</text>
+		if firstRing <= 7 {
+			<circle cx={ cx } cy={ cy } r="765" color="#ffffff"></circle>
+			<text x={ cx - 665 } y={ cy + 55 } font-size="160px" color="#ffffff" fill="#ffffff">7</text>
+			<text x={ cx - 30 } y={ cy - 585 } font-size="160px" color="#ffffff" fill="#ffffff">7</text>
+			<text x={ cx + 605 } y={ cy + 55 } font-size="160px" color="#ffffff" fill="#ffffff">7</text>
+			<text x={ cx - 30 } y={ cy + 690 } font-size="160px" color="#ffffff" fill="#ffffff">7</text>
+			if firstRing <= 6 {
+				<circle cx={ cx } cy={ cy } r="1015" color="#ffffff"></circle>
+				<text x={ cx - 920 } y={ cy + 55 } font-size="160px" color="#ffffff" fill="#ffffff">6</text>
+				<text x={ cx - 30 } y={ cy - 835 } font-size="160px" color="#ffffff" fill="#ffffff">6</text>
+				<text x={ cx + 850 } y={ cy + 55 } font-size="160px" color="#ffffff" fill="#ffffff">6</text>
+				<text x={ cx - 30 } y={ cy + 935 } font-size="160px" color="#ffffff" fill="#ffffff">6</text>
+				if firstRing <= 5 {
+					<circle cx={ cx } cy={ cy } r="1265" color="#ffffff"></circle>
+					<text x={ cx - 1165 } y={ cy + 55 } font-size="160px" color="#ffffff" fill="#ffffff">5</text>
+					<text x={ cx - 30 } y={ cy - 1085 } font-size="160px" color="#ffffff" fill="#ffffff">5</text>
+					<text x={ cx + 1095 } y={ cy + 55 } font-size="160px" color="#ffffff" fill="#ffffff">5</text>
+					<text x={ cx - 30 } y={ cy + 1185 } font-size="160px" color="#ffffff" fill="#ffffff">5</text>
+					if firstRing <= 4 {
+						<text x={ cx - 1425 } y={ cy + 55 } font-size="160px" color="#ffffff" fill="#ffffff">4</text>
+						<text x={ cx - 30 } y={ cy - 1335 } font-size="160px" color="#ffffff" fill="#ffffff">4</text>
+						<text x={ cx + 1355 } y={ cy + 55 } font-size="160px" color="#ffffff" fill="#ffffff">4</text>
+						<text x={ cx - 30 } y={ cy + 1435 } font-size="160px" color="#ffffff" fill="#ffffff">4</text>
+						if firstRing <= 3 {
+							<circle cx={ cx } cy={ cy } r="1765"></circle>
+							<text x={ cx - 1665 } y={ cy + 55 } font-size="160px" fill="#000000">3</text>
+							<text x={ cx - 30 } y={ cy - 1585 } font-size="160px" fill="#000000">3</text>
+							<text x={ cx + 1610 } y={ cy + 55 } font-size="160px" fill="#000000">3</text>
+							<text x={ cx - 30 } y={ cy + 1695 } font-size="160px" fill="#000000">3</text>
+							if firstRing <= 2 {
+								<circle cx={ cx } cy={ cy } r="2015"></circle>
+								<text x={ cx - 1915 } y={ cy + 55 } font-size="160px" fill="#000000">2</text>
+								<text x={ cx - 30 } y={ cy - 1835 } font-size="160px" fill="#000000">2</text>
+								<text x={ cx + 1855 } y={ cy + 55 } font-size="160px" fill="#000000">2</text>
+								<text x={ cx - 30 } y={ cy + 1935 } font-size="160px" fill="#000000">2</text>
+								if firstRing <= 1 {
+									<circle cx={ cx } cy={ cy } r="2265"></circle>
+									<text x={ cx - 2165 } y={ cy + 55 } font-size="160px" fill="#000000">1</text>
+									<text x={ cx - 30 } y={ cy - 2085 } font-size="160px" fill="#000000">1</text>
+									<text x={ cx + 2115 } y={ cy + 55 } font-size="160px" fill="#000000">1</text>
+									<text x={ cx - 30 } y={ cy + 2175 } font-size="160px" fill="#000000">1</text>
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		for _, shot := range shots {
+			@shot
+		}
+		if len(group) > 0 {
+			<polygon points={ group } stroke="red" stroke-width="10"></polygon>
+		}
+	</svg>
+}
