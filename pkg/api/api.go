@@ -85,7 +85,7 @@ func RegisterHandlers(ctx context.Context, mux *http.ServeMux, middleware []func
 		w.Header().Add("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 
-		ctx := smcontext.SetNameAndClass(r.Context(), "Kalle Kula", "okänd")
+		ctx := smcontext.SetNameAndClass(r.Context(), "okänd", "okänd")
 
 		urlValues := r.URL.Query()
 
