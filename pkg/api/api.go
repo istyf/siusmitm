@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/istyf/siusmitm/pkg/application"
 	"github.com/istyf/siusmitm/pkg/components"
 	"github.com/istyf/siusmitm/pkg/mitm"
+	"github.com/istyf/siusmitm/pkg/smcontext"
 
 	. "github.com/diwise/frontend-toolkit"
 	"github.com/diwise/frontend-toolkit/pkg/assets"
@@ -83,11 +85,42 @@ func RegisterHandlers(ctx context.Context, mux *http.ServeMux, middleware []func
 		w.Header().Add("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 
+		ctx := smcontext.SetNameAndClass(r.Context(), "Kalle Kula", "okänd")
+
+		urlValues := r.URL.Query()
+
+		componentURL := "/components/shootlog"
+		componentURLParams := []string{}
+
+		if class := urlValues.Get("class"); class != "" {
+			if class, err := url.QueryUnescape(class); err == nil {
+				componentURLParams = append(componentURLParams, "class="+url.QueryEscape(class))
+				ctx = smcontext.SetNameAndClass(ctx, smcontext.Name(ctx), class)
+			}
+		}
+
+		if name := urlValues.Get("name"); name != "" {
+			if name, err := url.QueryUnescape(name); err == nil {
+				componentURLParams = append(componentURLParams, "name="+url.QueryEscape(name))
+				ctx = smcontext.SetNameAndClass(ctx, name, smcontext.Class(ctx))
+			}
+		}
+
+		isStanding := true
+		if sival := urlValues.Get("si"); sival != "" && sival != "0" && sival != "false" {
+			componentURLParams = append(componentURLParams, "si=1")
+			isStanding = false
+		}
+
+		if len(componentURLParams) > 0 {
+			componentURL = componentURL + "?" + strings.Join(componentURLParams, "&")
+		}
+
 		mu.Lock()
 		defer mu.Unlock()
 
-		shootingLog := components.ShootingLog(version, assetLoader.Load, shots, true)
-		shootingLog.Render(r.Context(), w)
+		shootingLog := components.ShootingLog(version, assetLoader.Load, shots, isStanding, componentURL)
+		shootingLog.Render(ctx, w)
 	}))
 
 	r.Route("/components", func(r router.ServeMux) {
@@ -106,11 +139,32 @@ func RegisterHandlers(ctx context.Context, mux *http.ServeMux, middleware []func
 			w.Header().Add("Content-Type", "text/html; charset=utf-8")
 			w.WriteHeader(http.StatusOK)
 
+			ctx := smcontext.SetNameAndClass(r.Context(), "okänd", "okänd")
+
+			urlValues := r.URL.Query()
+
+			if class := urlValues.Get("class"); class != "" {
+				if class, err := url.QueryUnescape(class); err == nil {
+					ctx = smcontext.SetNameAndClass(ctx, smcontext.Name(ctx), class)
+				}
+			}
+
+			if name := urlValues.Get("name"); name != "" {
+				if name, err := url.QueryUnescape(name); err == nil {
+					ctx = smcontext.SetNameAndClass(ctx, name, smcontext.Class(ctx))
+				}
+			}
+
+			isStanding := true
+			if si := urlValues.Get("si"); si == "1" {
+				isStanding = false
+			}
+
 			mu.Lock()
 			defer mu.Unlock()
 
-			card := components.ShootingLogComponent(shots, true)
-			card.Render(r.Context(), w)
+			card := components.ShootingLogComponent(shots, isStanding)
+			card.Render(ctx, w)
 		}))
 
 		r.Get("/shotgroup", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

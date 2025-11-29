@@ -8,9 +8,11 @@ import (
 
 	. "github.com/diwise/frontend-toolkit"
 	"github.com/diwise/frontend-toolkit/pkg/middleware/csp"
+
+	"github.com/istyf/siusmitm/pkg/smcontext"
 )
 
-templ ShootingLog(version string, asset AssetLoaderFunc, shots []mitm.Shot, standing bool) {
+templ ShootingLog(version string, asset AssetLoaderFunc, shots []mitm.Shot, standing bool, componentURL string) {
 	<!DOCTYPE html>
 	<html>
 		<head>
@@ -25,7 +27,7 @@ templ ShootingLog(version string, asset AssetLoaderFunc, shots []mitm.Shot, stan
 			<div id="sse" hx-ext="sse" sse-connect={ "/api/sse/" + version } sse-close="goodbye">
 				<div id="ssetarget" class="hidden" sse-swap="upgrade2"></div>
 				<div id="ssesink" class="hidden" sse-swap="tick"></div>
-				<div class="w-full flex flex-row justify-around" hx-get="/components/shootlog" hx-trigger="sse:shot">
+				<div class="w-full flex flex-row justify-around" hx-get={ componentURL } hx-trigger="sse:shot">
 					@ShootingLogComponent(shots, standing)
 				</div>
 			</div>
@@ -187,20 +189,65 @@ func logRows(shots []mitm.Shot, standing bool) []templ.Component {
 	return rows
 }
 
+func totalScore(shots []mitm.Shot) (float64, int64) {
+	var decimalScore int64
+	var nonDecimalScore int64
+
+	for _, s := range shots {
+		decimalScore += s.ScoreInTenths
+		nonDecimalScore += (s.ScoreInTenths / 10)
+	}
+
+	return (float64(decimalScore) / 10.0), nonDecimalScore
+}
+
 templ ShootingLogHeader(shots []mitm.Shot) {
-	// Namn: Lowe Styf, Klass: L13
-	// Score (max 10, max 40)
-	// Datum
-	// Träning
-	// Klubb
-	@Target(shots, targetConf{mpi: true, bwp: true})
+	<div class="w-full flex flex-row justify-between items-center my-4 md:px-4 gap-4">
+		<div class="w-1/12"></div>
+		<div class="w-10/12 flex flew-row items-center justify-between gap-4">
+			<div class="w-full border-2 border-zinc-500 pl-4 md:py-1 lg:py-2 text-2xl md:text-lg flex flex-row justify-between">
+				<div class="w-5/8 flex flex-col justify-around">
+					<div class="w-full text-xl lg:text-2xl xl:text-3xl font-bold">
+						<div>{ smcontext.Name(ctx) }</div>
+					</div>
+					<div class="w-full text-xl text-zinc-800">
+						<div>{ smcontext.Club(ctx) }, { smcontext.Class(ctx) }</div>
+					</div>
+				</div>
+				<div class="w-3/8 flex flex-col justify-around">
+					<div class="w-full text-3xl md:text-4xl lg:text-5xl xl:text-7xl pr-4 font-bold text-zinc-800 text-right">
+						{ 
+							func() string {
+								decimal, nonDecimal := totalScore(shots)
+								return fmt.Sprintf("%0.1f (%d)", decimal, nonDecimal)
+							}() }
+					</div>
+				</div>
+			</div>
+		</div>
+		<div class="w-1/12 flex flex-col items-center justify-around group"></div>
+	</div>
+}
+
+templ ShootingLogFooter() {
+	<div class="w-full flex mb-2 print:fixed print:left-0 print:bottom-2 flex-row justify-around">
+		<div class="w-1/12"></div>
+		<div class="w-10/12 border-2 border-zinc-500 px-4 py-2 mx-8 flex flex-row justify-between text-2xl md:text-sm">
+			<div class="w-1/4">{ smcontext.Organiser(ctx) }</div>
+			<div class="w-1/4 text-center">{ smcontext.Date(ctx) }</div>
+			<div class="w-1/4 text-right">{ smcontext.Event(ctx) }</div>
+		</div>
+		<div class="w-1/12"></div>
+	</div>
 }
 
 templ ShootingLogComponent(shots []mitm.Shot, standing bool) {
 	<div class="w-full flex flex-col gap-2">
-		//@ShootingLogHeader(shots)
+		@ShootingLogHeader(shots)
 		for _, row := range logRows(shots, standing) {
 			@row
 		}
+		// Diagram (predicted score, series average, shot cadence)
+		@ShootingLogFooter()
 	</div>
 }
