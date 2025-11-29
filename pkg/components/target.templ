@@ -151,12 +151,12 @@ func NewDiagram(shots []mitm.Shot) templ.Component {
 	return Diagram(mr3, mr5, mr10, minMR, mr, maxMR)
 }
 
-func lastTen(shots []mitm.Shot) []mitm.Shot {
-	if len(shots) <= 10 {
+func last(count int, shots []mitm.Shot) []mitm.Shot {
+	if len(shots) <= count {
 		return shots
 	}
 
-	return shots[len(shots)-10:]
+	return shots[len(shots)-count:]
 }
 
 func series(shots []mitm.Shot, index int) string {
@@ -176,7 +176,7 @@ func series(shots []mitm.Shot, index int) string {
 templ NewScoreCard(shots []mitm.Shot) {
 	<div class="w-9/10 max-h-lvh flex flex-row p-20">
 		<div class="w-6/10 max-h-lvh">
-			@Target(lastTen(shots), targetConf{bwp: false, mpi: true, history: true, style: circle})
+			@Target(last(10, shots), targetConf{bwp: false, mpi: true, history: true, style: circle})
 		</div>
 		<div class="w-4/10 ml-16 flex flex-col justify-around">
 			<div class="w-full">
@@ -315,7 +315,7 @@ templ NewShotGroup(shots []mitm.Shot) {
 			</div>
 		</div>
 		<div class="w-6/10 max-h-lvh">
-			@Target(lastTen(shots), targetConf{bwp: false, mpi: false, history: true, style: plus})
+			@Target(last(10, shots), targetConf{bwp: false, mpi: false, history: true, style: plus})
 		</div>
 		<div class="w-2/10 ml-16 flex flex-col justify-around">
 			<div class="w-full">
@@ -379,7 +379,7 @@ func NewShot(x, y int, shot mitm.Shot, conf shotConf) templ.Component {
 
 	if conf.style == plus {
 		shotAttrs["fill"] = "#39FF14"
-		shotAttrs["stroke-width"] = "10"
+		shotAttrs["stroke-width"] = "15"
 	}
 
 	if conf.history == 0 {
@@ -752,23 +752,6 @@ func findConvexHullCoordinates(targetCenterX, targetCenterY int, shots []mitm.Sh
 	n := len(shots)
 	pts := slices.Clone(shots)
 
-	mpi, averageDistance := CalcMPI(shots)
-
-	var s2 float64
-	for _, s := range shots {
-		s2 = s2 + math.Pow(distance(mpi, s.PointOfImpact)-averageDistance, 2.0)
-	}
-	s2 = s2 / float64(n-1)
-	stddev := math.Sqrt(s2)
-
-	pts = slices.DeleteFunc(pts, func(s mitm.Shot) bool {
-		limit := averageDistance + (stddev) //stddev * 3
-		d := distance(mpi, s.PointOfImpact)
-		removed := d > limit
-		return removed
-	})
-	n = len(pts)
-
 	// Sort by X, then by Y
 	slices.SortStableFunc(pts, func(a, b mitm.Shot) int {
 		const Scale float64 = 1000000
@@ -828,6 +811,33 @@ func findConvexHullCoordinates(targetCenterX, targetCenterY int, shots []mitm.Sh
 	return result
 }
 
+func findShotGroup(shots []mitm.Shot) []mitm.Shot {
+	// Make a copy so the original slice isn't modified
+	n := len(shots)
+	pts := slices.Clone(shots)
+
+	for pass := range 2 {
+		mpi, averageDistance := CalcMPI(pts)
+
+		var s2 float64
+		for _, s := range pts {
+			s2 = s2 + math.Pow(distance(mpi, s.PointOfImpact)-averageDistance, 2.0)
+		}
+		s2 = s2 / float64(n-1)
+		stddev := math.Sqrt(s2)
+
+		pts = slices.DeleteFunc(pts, func(s mitm.Shot) bool {
+			limit := averageDistance + (stddev) + (float64(pass) * stddev) //stddev * 3
+			d := distance(mpi, s.PointOfImpact)
+			removed := d > limit
+			return removed
+		})
+		n = len(pts)
+	}
+
+	return pts
+}
+
 type shotStyle int
 
 const (
@@ -847,6 +857,12 @@ type targetConf struct {
 	style   shotStyle
 }
 
+func scoreInTenths(s mitm.Shot, center mitm.Point) int64 {
+	distanceFromCenter := distance(s.PointOfImpact, center) * 1000.0
+	score := 109 - int64(distanceFromCenter/0.25)
+	return score
+}
+
 func Target(shots []mitm.Shot, conf targetConf) templ.Component {
 	shotComponents := make([]templ.Component, 0, 60)
 
@@ -859,12 +875,17 @@ func Target(shots []mitm.Shot, conf targetConf) templ.Component {
 
 	var convexHullCoords string
 
+	shotGroup := findShotGroup(shots)
+
 	if conf.style == plus {
+		mpi, _ = CalcMPI(shotGroup)
 		for idx := range len(shots) {
 			shots[idx].PointOfImpact.X = shots[idx].PointOfImpact.X - mpi.X
 			shots[idx].PointOfImpact.Y = shots[idx].PointOfImpact.Y - mpi.Y
+			shots[idx].ScoreInTenths = scoreInTenths(shots[idx], mpi)
 		}
 		mpi, averageRadius = CalcMPI(shots)
+		shotGroup = findShotGroup(shots)
 	}
 
 	if len(shots) > 0 {
@@ -903,7 +924,7 @@ func Target(shots []mitm.Shot, conf targetConf) templ.Component {
 		}
 
 		if conf.style == plus {
-			convexHullCoords = findConvexHullCoordinates(targetCenterX, targetCenterY, shots)
+			convexHullCoords = findConvexHullCoordinates(targetCenterX, targetCenterY, shotGroup)
 		}
 	}
 
