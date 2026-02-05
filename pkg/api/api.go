@@ -64,7 +64,7 @@ func RegisterHandlers(ctx context.Context, mux *http.ServeMux, middleware []func
 		}
 	}
 
-	r.Get("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	r.Get("/{$}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 

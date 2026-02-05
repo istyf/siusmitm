@@ -1,9 +1,12 @@
 package components
 
 import (
+	"errors"
 	"fmt"
 	"github.com/istyf/siusmitm/pkg/mitm"
 	"math"
+	"slices"
+	"strings"
 	"time"
 
 	. "github.com/diwise/frontend-toolkit"
@@ -75,7 +78,7 @@ templ ShootingLog(version string, asset AssetLoaderFunc, shots []mitm.Shot, stan
 }
 
 templ logRow(shots []mitm.Shot, standing bool) {
-	<div class="w-full flex flex-row justify-between items-center md:px-4 gap-4">
+	<div class="w-full flex flex-row justify-between items-center md:px-4 gap-4 print:mb-3">
 		<div class="w-1/12 flex flex-col items-center justify-around gap-1 text-center text-xs md:text-2xl">
 			<div class="w-10 text-[9px] md:w-12 md:text-xs border-1 border-blue-400">
 				if len(shots) > 0 {
@@ -107,19 +110,28 @@ templ logRow(shots []mitm.Shot, standing bool) {
 		<div class="w-10/12 flex flew-row items-center justify-between gap-4">
 			<div class="w-7/8 flex flex-row justify-around">
 				for idx := range 10 {
-					<div class="flex flex-col w-1/12">
+					<div
+						class="flex flex-col w-1/12 group"
+						data-inner={ func() string {
+						if idx < len(shots) && shots[idx].ScoreInTenths >= 102 {
+							return "true"
+						}
+						return "false"
+					}() }
+					>
 						<div class="w-full font-medium font-xs">
 							&nbsp;
 						</div>
 						<div class="w-full">
 							if idx < len(shots) {
-								@Target(shots[idx:idx+1], targetConf{})
+								@Target(shots[idx:idx+1], targetConf{fill: "#9f9fa9"})
 							} else {
-								@Target([]mitm.Shot{}, targetConf{})
+								@Target([]mitm.Shot{}, targetConf{fill: "#9f9fa9"})
 							}
 						</div>
-						<div class="w-full font-medium font-xs text-center">
-							{ 
+						<div class="flex flex-row justify-around">
+							<div class="w-1/3 font-medium border-blue-400 group-data-[inner=true]:border-1 group-data-[inner=true]:font-bold font-xs text-center">
+								{ 
 								func() string {
 									if idx < len(shots) {
 										score := shots[idx].ScoreInTenths
@@ -131,12 +143,13 @@ templ logRow(shots []mitm.Shot, standing bool) {
 									}
 									return "."
 								}() }
+							</div>
 						</div>
 					</div>
 				}
 			</div>
 			<div class="w-1/8">
-				@Target(shots, targetConf{mpi: true})
+				@Target(shots, targetConf{mpi: true, fill: "#3f3f46"})
 			</div>
 		</div>
 		<div
@@ -189,6 +202,17 @@ func logRows(shots []mitm.Shot, standing bool) []templ.Component {
 	return rows
 }
 
+func sumPreviousResults(count, atIdx int, shots []mitm.Shot) (float64, error) {
+	shotCount := len(shots)
+
+	if atIdx >= shotCount || atIdx < (count-1) {
+		return 0.0, errors.New("not enough shots")
+	}
+
+	score, _ := totalScore(shots[atIdx-count+1 : atIdx+1])
+	return score, nil
+}
+
 func totalScore(shots []mitm.Shot) (float64, int64) {
 	var decimalScore int64
 	var nonDecimalScore int64
@@ -202,7 +226,7 @@ func totalScore(shots []mitm.Shot) (float64, int64) {
 }
 
 templ ShootingLogHeader(shots []mitm.Shot) {
-	<div class="w-full flex flex-row justify-between items-center my-4 md:px-4 gap-4">
+	<div class="w-full flex flex-row justify-between items-center my-4 print:mt-6 md:px-4 gap-4">
 		<div class="w-1/12"></div>
 		<div class="w-10/12 flex flew-row items-center justify-between gap-4">
 			<div class="w-full border-2 border-zinc-500 pl-4 md:py-1 lg:py-2 text-2xl md:text-lg flex flex-row justify-between">
@@ -229,8 +253,203 @@ templ ShootingLogHeader(shots []mitm.Shot) {
 	</div>
 }
 
+type datapoint struct {
+	value float64
+	t     time.Duration
+}
+
+func graphPoints(dps []*datapoint) string {
+	coords := make([]string, 0, len(dps))
+
+	for _, dp := range dps {
+		coords = append(coords, fmt.Sprintf("%d,%d", dp.t.Milliseconds()/1000, int(dp.value)))
+	}
+
+	return strings.Join(coords, " ")
+}
+
+type diag struct {
+	points      []*datapoint
+	fill        string
+	stroke      string
+	strokeWidth int
+	dashArray   string
+}
+
+type lbl struct {
+	text   string
+	length int
+	x      int
+	y      int
+}
+
+templ createDiagrams(title string, seconds int, labels []*lbl, diagrams ...*diag) {
+	<div class="w-full flex flex-col items-center my-4 print:fixed print:left-0 print:bottom-17">
+		<div class="w-full text-center mb-2">{ title }</div>
+		<div class="w-full flex flex-row justify-around">
+			<div class="w-9/10 h-48 border-1 border-zinc-500">
+				<svg class="w-full h-full" xmlns="http://www.w3.org/2000/svg" viewBox={ fmt.Sprintf("0 0 %d 101", seconds+1) } fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" preserveAspectRatio="none">
+					<rect
+						x="0"
+						y="0"
+						width={ fmt.Sprintf("%d", seconds) }
+						height="100%"
+						fill="#f4f4f5"
+						stroke-width="0"
+					></rect>
+					for _, lbl := range labels {
+						<text x={ lbl.x } y={ lbl.y } font-size="18px" fill="#51a2ff" stroke="#51a2ff" stroke-width="1" textLength={ lbl.length }>{ lbl.text }</text>
+					}
+					for _, d := range diagrams {
+						<polyline points={ graphPoints(d.points) } fill={ d.fill } stroke={ d.stroke } stroke-width={ d.strokeWidth } stroke-linejoin="bevel" stroke-dasharray={ d.dashArray }></polyline>
+					}
+				</svg>
+			</div>
+		</div>
+		<div class="flex flex-row-reverse mt-2 gap-20 items-center">
+			<div class="flex flex-row-reverse gap-3 w-30 items-center">
+				<div>Senaste 3</div>
+				<div class="w-4 h-4 rounded-full bg-[#ff5c00] border-2 border-[#ff5c00]"></div>
+			</div>
+			<div class="flex flex-row gap-3 items-center">
+				<div class="w-4 h-4 rounded-full bg-[#51a2ff] border-2 border-[#51a2ff]"></div>
+				<div>Senaste 10</div>
+			</div>
+			<div class="flex flex-row gap-3 w-30 items-center">
+				<div class="w-4 h-4 rounded-full bg-[#27272a] print:bg-black border-2"></div>
+				<div>Medelresultat</div>
+			</div>
+		</div>
+	</div>
+}
+
+templ doNotCreateDiagrams() {
+}
+
+func ShootingLogDiagrams(shots []mitm.Shot) templ.Component {
+	shotCount := len(shots)
+	minCount := 10
+
+	if shotCount > minCount {
+		totalTime := shots[shotCount-1].TimeOfImpact().Sub(shots[0].TimeOfImpact())
+
+		averageScore := make([]*datapoint, 0, shotCount)
+		average3 := make([]*datapoint, 0, shotCount-2)
+		average10 := make([]*datapoint, 0, shotCount-9)
+		cumulativeFlow := make([]*datapoint, 0, shotCount)
+
+		cumulativeFlow = append(cumulativeFlow, &datapoint{value: 100.0, t: 0})
+
+		datapointComparator := func(lhs *datapoint, rhs *datapoint) int {
+			if lhs.value > rhs.value {
+				return 1
+			} else if lhs.value < rhs.value {
+				return -1
+			}
+			return 0
+		}
+
+		for idx := range shotCount {
+			durationUntilThisShot := shots[idx].TimeOfImpact().Sub(shots[0].TimeOfImpact())
+
+			if idx > 0 {
+				durationFromPreviousShot := shots[idx].TimeOfImpact().Sub(shots[idx-1].TimeOfImpact())
+				v := 100.0 - (float64(idx+1) * 100.0 / float64(shotCount))
+				cumulativeFlow = append(cumulativeFlow, &datapoint{
+					value: v,
+					t:     durationUntilThisShot - durationFromPreviousShot,
+				})
+				cumulativeFlow = append(cumulativeFlow, &datapoint{
+					value: v,
+					t:     durationUntilThisShot,
+				})
+			}
+
+			if idx >= 2 {
+				score, _ := sumPreviousResults(idx+1, idx, shots)
+				averageScore = append(averageScore, &datapoint{
+					value: (score / float64(idx+1)),
+					t:     durationUntilThisShot,
+				})
+			}
+
+			if score, err := sumPreviousResults(3, idx, shots); idx >= 3 && err == nil {
+				average3 = append(average3, &datapoint{
+					value: (score / 3.0),
+					t:     durationUntilThisShot,
+				})
+			}
+
+			if score, err := sumPreviousResults(10, idx, shots); idx >= 10 && err == nil {
+				average10 = append(average10, &datapoint{
+					value: (score / 10.0),
+					t:     durationUntilThisShot,
+				})
+			}
+		}
+
+		cumulativeFlow = append(cumulativeFlow, &datapoint{value: 100.0, t: totalTime})
+		cumulativeFlow = append(cumulativeFlow, &datapoint{value: 100.0, t: 0})
+
+		max3 := slices.MaxFunc(average3, datapointComparator).value
+		min3 := slices.MinFunc(average3, datapointComparator).value
+
+		max10 := slices.MaxFunc(average10, datapointComparator).value
+		min10 := slices.MinFunc(average10, datapointComparator).value
+
+		maxAll := slices.MaxFunc(averageScore, datapointComparator).value
+		minAll := slices.MinFunc(averageScore, datapointComparator).value
+
+		ceiling := min(10.9, max(max(max3, max10), maxAll)+0.2)
+		floor := min(min(min3, min10), minAll) - 0.2
+
+		for idx := range average3 {
+			v := average3[idx].value
+			v = 100.0 - ((v - floor) * 100.0 / (ceiling - floor))
+			average3[idx].value = v
+		}
+
+		for idx := range average10 {
+			v := average10[idx].value
+			v = 100.0 - ((v - floor) * 100.0 / (ceiling - floor))
+			average10[idx].value = v
+		}
+
+		for idx := range averageScore {
+			v := averageScore[idx].value
+			v = 100.0 - ((v - floor) * 100.0 / (ceiling - floor))
+			averageScore[idx].value = v
+		}
+
+		max10V := max10
+		min10V := min10
+
+		max10 = 100.0 - ((max10 - floor) * 100.0 / (ceiling - floor))
+		min10 = 100.0 - ((min10 - floor) * 100.0 / (ceiling - floor))
+
+		labels := []*lbl{
+			&lbl{text: fmt.Sprintf("%0.1f", max10V), x: 5, y: int(max10) - 2, length: int(totalTime.Seconds()) / 45},
+			&lbl{text: fmt.Sprintf("%0.1f", min10V), x: 5, y: int(min10) + 14, length: int(totalTime.Seconds()) / 45},
+		}
+
+		return createDiagrams(
+			fmt.Sprintf("%d skott, %dm %ds", shotCount, int(totalTime.Minutes()), int(totalTime.Seconds())%60),
+			int(totalTime.Seconds()+0.5),
+			labels,
+			&diag{points: cumulativeFlow, fill: "#d4d4d8", stroke: "#9f9fa9", strokeWidth: 1, dashArray: "5,0"},
+			&diag{points: []*datapoint{{value: max10, t: 0}, {value: max10, t: totalTime}}, stroke: "#51a2ff", strokeWidth: 1, dashArray: "3,12"},
+			&diag{points: []*datapoint{{value: min10, t: 0}, {value: min10, t: totalTime}}, stroke: "#51a2ff", strokeWidth: 1, dashArray: "3,12"},
+			&diag{points: average3, fill: "none", stroke: "#ff5c00", strokeWidth: 2, dashArray: "5,10"},
+			&diag{points: average10, fill: "none", stroke: "#51a2ff", strokeWidth: 2, dashArray: "6,4"},
+			&diag{points: averageScore, fill: "none", stroke: "#27272a", strokeWidth: 2, dashArray: "5,0"},
+		)
+	}
+
+	return doNotCreateDiagrams()
+}
+
 templ ShootingLogFooter() {
-	<div class="w-full flex mb-2 print:fixed print:left-0 print:bottom-2 flex-row justify-around">
+	<div class="w-full flex mb-2 print:fixed print:left-0 print:bottom-3 flex-row justify-around">
 		<div class="w-1/12"></div>
 		<div class="w-10/12 border-2 border-zinc-500 px-4 py-2 mx-8 flex flex-row justify-between text-2xl md:text-sm">
 			<div class="w-1/4">{ smcontext.Organiser(ctx) }</div>
@@ -247,7 +466,7 @@ templ ShootingLogComponent(shots []mitm.Shot, standing bool) {
 		for _, row := range logRows(shots, standing) {
 			@row
 		}
-		// Diagram (predicted score, series average, shot cadence)
+		@ShootingLogDiagrams(shots)
 		@ShootingLogFooter()
 	</div>
 }

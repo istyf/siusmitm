@@ -69,7 +69,7 @@ func main() {
 					json.Unmarshal([]byte(shotsJSON), &shotsToAdd)
 
 					for len(shotsToAdd) > 0 {
-						time.Sleep(time.Duration(500) * time.Millisecond)
+						time.Sleep(time.Duration(250) * time.Millisecond)
 						s := shotsToAdd[0]
 						shotsToAdd = shotsToAdd[1:]
 

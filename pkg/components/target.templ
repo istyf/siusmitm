@@ -855,6 +855,8 @@ type targetConf struct {
 	history bool
 	mpi     bool
 	style   shotStyle
+	fill    string
+	stroke  string
 }
 
 func scoreInTenths(s mitm.Shot, center mitm.Point) int64 {
@@ -928,60 +930,88 @@ func Target(shots []mitm.Shot, conf targetConf) templ.Component {
 		}
 	}
 
-	return NewTarget(targetCenterX, targetCenterY, minRing, shotComponents, convexHullCoords)
+	tcfg := &tConf{
+		cx:        targetCenterX,
+		cy:        targetCenterY,
+		firstRing: minRing,
+		shots:     shotComponents,
+		group:     convexHullCoords,
+		fill:      "#18181b",
+		stroke:    "#09090b",
+	}
+
+	if conf.fill != "" {
+		tcfg.fill = conf.fill
+	}
+
+	if conf.stroke != "" {
+		tcfg.stroke = conf.stroke
+	}
+
+	return NewTarget(tcfg)
 }
 
-templ NewTarget(cx, cy, firstRing int, shots []templ.Component, group string) {
-	<svg xmlns="http://www.w3.org/2000/svg" viewBox={ fmt.Sprintf("0 0 %d %d", cx*2, cy*2) } fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
-		<circle cx={ cx } cy={ cy } r={ map[int]int{1: 1515, 2: 1515, 3: 1515, 4: 1515, 5: 1265, 6: 1015, 7: 765, 8: 515, 9: 515}[firstRing] } fill="#000000" stroke="#000000"></circle>
-		<circle cx={ cx } cy={ cy } r="15" fill="#ffffff"></circle>
-		<circle cx={ cx } cy={ cy } r="265" color="#ffffff"></circle>
-		<circle cx={ cx } cy={ cy } r="515" color="#ffffff"></circle>
-		<text x={ cx - 420 } y={ cy + 55 } font-size="160px" color="#ffffff" fill="#ffffff">8</text>
-		<text x={ cx - 30 } y={ cy - 335 } font-size="160px" color="#ffffff" fill="#ffffff">8</text>
-		<text x={ cx + 350 } y={ cy + 55 } font-size="160px" color="#ffffff" fill="#ffffff">8</text>
-		<text x={ cx - 30 } y={ cy + 435 } font-size="160px" color="#ffffff" fill="#ffffff">8</text>
-		if firstRing <= 7 {
-			<circle cx={ cx } cy={ cy } r="765" color="#ffffff"></circle>
-			<text x={ cx - 665 } y={ cy + 55 } font-size="160px" color="#ffffff" fill="#ffffff">7</text>
-			<text x={ cx - 30 } y={ cy - 585 } font-size="160px" color="#ffffff" fill="#ffffff">7</text>
-			<text x={ cx + 605 } y={ cy + 55 } font-size="160px" color="#ffffff" fill="#ffffff">7</text>
-			<text x={ cx - 30 } y={ cy + 690 } font-size="160px" color="#ffffff" fill="#ffffff">7</text>
-			if firstRing <= 6 {
-				<circle cx={ cx } cy={ cy } r="1015" color="#ffffff"></circle>
-				<text x={ cx - 920 } y={ cy + 55 } font-size="160px" color="#ffffff" fill="#ffffff">6</text>
-				<text x={ cx - 30 } y={ cy - 835 } font-size="160px" color="#ffffff" fill="#ffffff">6</text>
-				<text x={ cx + 850 } y={ cy + 55 } font-size="160px" color="#ffffff" fill="#ffffff">6</text>
-				<text x={ cx - 30 } y={ cy + 935 } font-size="160px" color="#ffffff" fill="#ffffff">6</text>
-				if firstRing <= 5 {
-					<circle cx={ cx } cy={ cy } r="1265" color="#ffffff"></circle>
-					<text x={ cx - 1165 } y={ cy + 55 } font-size="160px" color="#ffffff" fill="#ffffff">5</text>
-					<text x={ cx - 30 } y={ cy - 1085 } font-size="160px" color="#ffffff" fill="#ffffff">5</text>
-					<text x={ cx + 1095 } y={ cy + 55 } font-size="160px" color="#ffffff" fill="#ffffff">5</text>
-					<text x={ cx - 30 } y={ cy + 1185 } font-size="160px" color="#ffffff" fill="#ffffff">5</text>
-					if firstRing <= 4 {
-						<text x={ cx - 1425 } y={ cy + 55 } font-size="160px" color="#ffffff" fill="#ffffff">4</text>
-						<text x={ cx - 30 } y={ cy - 1335 } font-size="160px" color="#ffffff" fill="#ffffff">4</text>
-						<text x={ cx + 1355 } y={ cy + 55 } font-size="160px" color="#ffffff" fill="#ffffff">4</text>
-						<text x={ cx - 30 } y={ cy + 1435 } font-size="160px" color="#ffffff" fill="#ffffff">4</text>
-						if firstRing <= 3 {
-							<circle cx={ cx } cy={ cy } r="1765"></circle>
-							<text x={ cx - 1665 } y={ cy + 55 } font-size="160px" fill="#000000">3</text>
-							<text x={ cx - 30 } y={ cy - 1585 } font-size="160px" fill="#000000">3</text>
-							<text x={ cx + 1610 } y={ cy + 55 } font-size="160px" fill="#000000">3</text>
-							<text x={ cx - 30 } y={ cy + 1695 } font-size="160px" fill="#000000">3</text>
-							if firstRing <= 2 {
-								<circle cx={ cx } cy={ cy } r="2015"></circle>
-								<text x={ cx - 1915 } y={ cy + 55 } font-size="160px" fill="#000000">2</text>
-								<text x={ cx - 30 } y={ cy - 1835 } font-size="160px" fill="#000000">2</text>
-								<text x={ cx + 1855 } y={ cy + 55 } font-size="160px" fill="#000000">2</text>
-								<text x={ cx - 30 } y={ cy + 1935 } font-size="160px" fill="#000000">2</text>
-								if firstRing <= 1 {
-									<circle cx={ cx } cy={ cy } r="2265"></circle>
-									<text x={ cx - 2165 } y={ cy + 55 } font-size="160px" fill="#000000">1</text>
-									<text x={ cx - 30 } y={ cy - 2085 } font-size="160px" fill="#000000">1</text>
-									<text x={ cx + 2115 } y={ cy + 55 } font-size="160px" fill="#000000">1</text>
-									<text x={ cx - 30 } y={ cy + 2175 } font-size="160px" fill="#000000">1</text>
+type tConf struct {
+	cx        int
+	cy        int
+	firstRing int
+	shots     []templ.Component
+	group     string
+	fill      string
+	stroke    string
+}
+
+templ NewTarget(conf *tConf) {
+	<svg xmlns="http://www.w3.org/2000/svg" viewBox={ fmt.Sprintf("0 0 %d %d", conf.cx*2, conf.cy*2) } fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+		<circle cx={ conf.cx } cy={ conf.cy } r={ map[int]int{1: 1515, 2: 1515, 3: 1515, 4: 1515, 5: 1265, 6: 1015, 7: 765, 8: 515, 9: 515}[conf.firstRing] } fill={ conf.fill } stroke={ conf.stroke }></circle>
+		<circle cx={ conf.cx } cy={ conf.cy } r="15" fill="#f4f4f5"></circle>
+		<circle cx={ conf.cx } cy={ conf.cy } r="265" color="#f4f4f5"></circle>
+		<circle cx={ conf.cx } cy={ conf.cy } r="515" color="#f4f4f5"></circle>
+		<text x={ conf.cx - 420 } y={ conf.cy + 55 } font-size="160px" color="#ffffff" fill="#ffffff">8</text>
+		<text x={ conf.cx - 30 } y={ conf.cy - 335 } font-size="160px" color="#ffffff" fill="#ffffff">8</text>
+		<text x={ conf.cx + 350 } y={ conf.cy + 55 } font-size="160px" color="#ffffff" fill="#ffffff">8</text>
+		<text x={ conf.cx - 30 } y={ conf.cy + 435 } font-size="160px" color="#ffffff" fill="#ffffff">8</text>
+		if conf.firstRing <= 7 {
+			<circle cx={ conf.cx } cy={ conf.cy } r="765" color="#f4f4f5"></circle>
+			<text x={ conf.cx - 665 } y={ conf.cy + 55 } font-size="160px" color="#ffffff" fill="#ffffff">7</text>
+			<text x={ conf.cx - 30 } y={ conf.cy - 585 } font-size="160px" color="#ffffff" fill="#ffffff">7</text>
+			<text x={ conf.cx + 605 } y={ conf.cy + 55 } font-size="160px" color="#ffffff" fill="#ffffff">7</text>
+			<text x={ conf.cx - 30 } y={ conf.cy + 690 } font-size="160px" color="#ffffff" fill="#ffffff">7</text>
+			if conf.firstRing <= 6 {
+				<circle cx={ conf.cx } cy={ conf.cy } r="1015" color="#f4f4f5"></circle>
+				<text x={ conf.cx - 920 } y={ conf.cy + 55 } font-size="160px" color="#ffffff" fill="#ffffff">6</text>
+				<text x={ conf.cx - 30 } y={ conf.cy - 835 } font-size="160px" color="#ffffff" fill="#ffffff">6</text>
+				<text x={ conf.cx + 850 } y={ conf.cy + 55 } font-size="160px" color="#ffffff" fill="#ffffff">6</text>
+				<text x={ conf.cx - 30 } y={ conf.cy + 935 } font-size="160px" color="#ffffff" fill="#ffffff">6</text>
+				if conf.firstRing <= 5 {
+					<circle cx={ conf.cx } cy={ conf.cy } r="1265" color="#f4f4f5"></circle>
+					<text x={ conf.cx - 1165 } y={ conf.cy + 55 } font-size="160px" color="#ffffff" fill="#ffffff">5</text>
+					<text x={ conf.cx - 30 } y={ conf.cy - 1085 } font-size="160px" color="#ffffff" fill="#ffffff">5</text>
+					<text x={ conf.cx + 1095 } y={ conf.cy + 55 } font-size="160px" color="#ffffff" fill="#ffffff">5</text>
+					<text x={ conf.cx - 30 } y={ conf.cy + 1185 } font-size="160px" color="#ffffff" fill="#ffffff">5</text>
+					if conf.firstRing <= 4 {
+						<text x={ conf.cx - 1425 } y={ conf.cy + 55 } font-size="160px" color="#ffffff" fill="#ffffff">4</text>
+						<text x={ conf.cx - 30 } y={ conf.cy - 1335 } font-size="160px" color="#ffffff" fill="#ffffff">4</text>
+						<text x={ conf.cx + 1355 } y={ conf.cy + 55 } font-size="160px" color="#ffffff" fill="#ffffff">4</text>
+						<text x={ conf.cx - 30 } y={ conf.cy + 1435 } font-size="160px" color="#ffffff" fill="#ffffff">4</text>
+						if conf.firstRing <= 3 {
+							<circle cx={ conf.cx } cy={ conf.cy } r="1765"></circle>
+							<text x={ conf.cx - 1665 } y={ conf.cy + 55 } font-size="160px" fill="#000000">3</text>
+							<text x={ conf.cx - 30 } y={ conf.cy - 1585 } font-size="160px" fill="#000000">3</text>
+							<text x={ conf.cx + 1610 } y={ conf.cy + 55 } font-size="160px" fill="#000000">3</text>
+							<text x={ conf.cx - 30 } y={ conf.cy + 1695 } font-size="160px" fill="#000000">3</text>
+							if conf.firstRing <= 2 {
+								<circle cx={ conf.cx } cy={ conf.cy } r="2015"></circle>
+								<text x={ conf.cx - 1915 } y={ conf.cy + 55 } font-size="160px" fill="#000000">2</text>
+								<text x={ conf.cx - 30 } y={ conf.cy - 1835 } font-size="160px" fill="#000000">2</text>
+								<text x={ conf.cx + 1855 } y={ conf.cy + 55 } font-size="160px" fill="#000000">2</text>
+								<text x={ conf.cx - 30 } y={ conf.cy + 1935 } font-size="160px" fill="#000000">2</text>
+								if conf.firstRing <= 1 {
+									<circle cx={ conf.cx } cy={ conf.cy } r="2265"></circle>
+									<text x={ conf.cx - 2165 } y={ conf.cy + 55 } font-size="160px" fill="#000000">1</text>
+									<text x={ conf.cx - 30 } y={ conf.cy - 2085 } font-size="160px" fill="#000000">1</text>
+									<text x={ conf.cx + 2115 } y={ conf.cy + 55 } font-size="160px" fill="#000000">1</text>
+									<text x={ conf.cx - 30 } y={ conf.cy + 2175 } font-size="160px" fill="#000000">1</text>
 								}
 							}
 						}
@@ -989,11 +1019,11 @@ templ NewTarget(cx, cy, firstRing int, shots []templ.Component, group string) {
 				}
 			}
 		}
-		for _, shot := range shots {
+		for _, shot := range conf.shots {
 			@shot
 		}
-		if len(group) > 0 {
-			<polygon points={ group } stroke="red" stroke-width="10"></polygon>
+		if len(conf.group) > 0 {
+			<polygon points={ conf.group } stroke="red" stroke-width="10"></polygon>
 		}
 	</svg>
 }
