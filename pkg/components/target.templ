@@ -866,6 +866,7 @@ func scoreInTenths(s mitm.Shot, center mitm.Point) int64 {
 }
 
 func Target(shots []mitm.Shot, conf targetConf) templ.Component {
+	shots = slices.Clone(shots)
 	shotComponents := make([]templ.Component, 0, 60)
 
 	var history int = 100
